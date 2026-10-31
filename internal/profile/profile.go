@@ -31,6 +31,7 @@ type Profile struct {
 	Volume        int // 0 to 10
 	PureRandom    bool
 	Fullscreen    bool
+	MusicOff      bool
 	Best          map[string]int // fastest win in ms, by board key
 	Played        map[string]int // games by mode name
 	Wins          map[string]int // wins by mode name
@@ -41,6 +42,22 @@ type Profile struct {
 	LastDaily     string
 	Rivals        map[string]Rival
 	Achievements  map[string]string // id to date earned
+
+	Coins         int
+	CoinsEarned   int             // lifetime total, unaffected by spending
+	RP            int             // rank points on the ladder
+	BestTier      int             // highest ladder tier reached
+	BestBoards    int             // most boards cleared in one Blitz
+	Owned         map[string]bool // shop items bought
+	FlagSkin      string
+	MineSkin      string
+	FaceSkin      string
+	TitleSkin     string
+	Freezes       int
+	LoginDay      int
+	LastLogin     string
+	QuestDate     string
+	QuestProgress map[string]int // by quest id, for QuestDate
 }
 
 // defaultName uses the OS account name, so that friends' games don't all
@@ -68,6 +85,9 @@ func New() *Profile {
 		Wins:         map[string]int{},
 		Rivals:       map[string]Rival{},
 		Achievements: map[string]string{},
+		Owned:        map[string]bool{},
+
+		QuestProgress: map[string]int{},
 	}
 }
 
@@ -113,6 +133,12 @@ func (p *Profile) fillMaps() {
 	}
 	if p.Achievements == nil {
 		p.Achievements = map[string]string{}
+	}
+	if p.Owned == nil {
+		p.Owned = map[string]bool{}
+	}
+	if p.QuestProgress == nil {
+		p.QuestProgress = map[string]int{}
 	}
 }
 
@@ -166,6 +192,7 @@ type Theme struct {
 	ID, Name string
 	Level    int    // level that unlocks it, or 0
 	Award    string // achievement that unlocks it, or empty
+	Price    int    // coins in the shop, or 0 if it can only be earned
 }
 
 // Themes lists every theme in unlock order.
@@ -175,6 +202,10 @@ var Themes = []Theme{
 	{ID: "amber", Name: "Amber Terminal", Level: 5},
 	{ID: "arcade", Name: "Neon Arcade", Level: 8},
 	{ID: "vaporwave", Name: "Vaporwave", Award: "daily7"},
+	{ID: "midnight", Name: "Midnight", Price: 600},
+	{ID: "sakura", Name: "Sakura", Price: 700},
+	{ID: "glacier", Name: "Glacier", Price: 800},
+	{ID: "phosphor", Name: "Phosphor", Price: 900},
 }
 
 // ThemeByID finds a theme, falling back to the default.
@@ -194,6 +225,8 @@ func (t Theme) Unlocks() string {
 		return fmt.Sprintf("Reach level %d", t.Level)
 	case t.Award != "":
 		return "Earn: " + AchievementByID(t.Award).Name
+	case t.Price > 0:
+		return fmt.Sprintf("Buy for %d coins", t.Price)
 	}
 	return "Unlocked"
 }
@@ -201,6 +234,9 @@ func (t Theme) Unlocks() string {
 // ThemeUnlocked reports whether the player has earned a theme.
 func (p *Profile) ThemeUnlocked(id string) bool {
 	t := ThemeByID(id)
+	if t.Price > 0 {
+		return p.Owned[t.ID]
+	}
 	if t.Award != "" {
 		_, ok := p.Achievements[t.Award]
 		return ok
@@ -239,6 +275,8 @@ type GameResult struct {
 	Flagged   bool
 	UsedBomb  bool
 	Rivals    []string // human opponents only
+	Boards    int      // cleared in Blitz
+	Roll      int      // 0 to 99, for the lucky coin bonus
 }
 
 // Rewards is what a game earned, for the results screen.
@@ -250,6 +288,14 @@ type Rewards struct {
 	DailyStreak  int
 	Achievements []Achievement
 	Themes       []Theme
+	Coins        int
+	Lucky        int // what the lucky roll multiplied coins by
+	RP           int // change in rank points
+	RankBefore   string
+	RankAfter    string
+	Promotions   []Tier
+	Quests       []Quest // finished by this game
+	QuestBonus   bool    // this game finished the last of the day's quests
 }
 
 // Today returns a date in the form results and streaks use.
@@ -262,10 +308,15 @@ func (p *Profile) DailyDone(date string) bool { return p.LastDaily == date }
 
 // DailyStreakAlive returns the streak still in reach on the given date.
 func (p *Profile) DailyStreakAlive(date string) int {
-	if p.LastDaily == date || p.LastDaily == dayBefore(date) {
+	if p.LastDaily == date || p.LastDaily == dayBefore(date) || p.frozen(date) {
 		return p.DailyStreak
 	}
 	return 0
+}
+
+// frozen reports whether a streak freeze covers the day missed before date.
+func (p *Profile) frozen(date string) bool {
+	return p.Freezes > 0 && p.DailyStreak > 0 && p.LastDaily == dayBefore(dayBefore(date))
 }
 
 func dayBefore(date string) string {
@@ -278,7 +329,12 @@ func dayBefore(date string) string {
 
 // Record applies a finished game and reports what it earned.
 func (p *Profile) Record(r GameResult) Rewards {
-	rw := Rewards{LevelBefore: p.Level()}
+	rw := Rewards{LevelBefore: p.Level(), RankBefore: RankOf(p.RP).Name, Lucky: 1}
+	pay := func(coins int) {
+		rw.Coins += coins
+		p.Coins += coins
+		p.CoinsEarned += coins
+	}
 	themesBefore := p.unlockedThemes()
 	key := r.Mode.String()
 	p.Played[key]++
@@ -300,9 +356,13 @@ func (p *Profile) Record(r GameResult) Rewards {
 		if replayedDaily {
 			rw.XP = 5
 		} else if r.Won {
-			if p.LastDaily == dayBefore(r.Date) {
+			switch {
+			case p.LastDaily == dayBefore(r.Date):
 				p.DailyStreak++
-			} else {
+			case p.frozen(r.Date):
+				p.Freezes--
+				p.DailyStreak++
+			default:
 				p.DailyStreak = 1
 			}
 			p.LastDaily = r.Date
@@ -323,9 +383,28 @@ func (p *Profile) Record(r GameResult) Rewards {
 		}
 	}
 
+	// A replayed daily or a free ride on a shared board earns only its token
+	// XP, so neither can be repeated for coins or rank.
+	if replayedDaily || sharedBoard(r.Mode) && r.Score == 0 {
+		pay(1)
+	} else {
+		rw.Lucky = luckyMultiplier(r.Roll)
+		pay(gameCoins(rw.XP, r.Won, p.WinStreak) * rw.Lucky)
+		rw.RP = p.climb(r)
+		p.advanceQuests(r, &rw, pay)
+	}
 	p.XP += rw.XP
+	rw.RankAfter = RankOf(p.RP).Name
+	for _, t := range p.promote() {
+		rw.Promotions = append(rw.Promotions, t)
+		pay(t.Coins)
+	}
 	rw.Achievements = p.award(r)
+	pay(len(rw.Achievements) * awardCoins)
 	rw.LevelAfter = p.Level()
+	for lv := rw.LevelBefore + 1; lv <= rw.LevelAfter; lv++ {
+		pay(LevelCoins(lv))
+	}
 	for _, id := range p.unlockedThemes() {
 		if !slices.Contains(themesBefore, id) {
 			rw.Themes = append(rw.Themes, ThemeByID(id))
@@ -335,6 +414,13 @@ func (p *Profile) Record(r GameResult) Rewards {
 }
 
 func (p *Profile) updateBest(r GameResult) bool {
+	if r.Mode == match.Blitz {
+		if r.Boards <= p.BestBoards {
+			return false
+		}
+		p.BestBoards = r.Boards
+		return true
+	}
 	key := r.Board
 	if r.Daily {
 		key = "daily"
@@ -356,6 +442,10 @@ func xpFor(r GameResult) int {
 		xp = 10 + r.Score/3
 	case match.Flags:
 		xp = 10 + r.Score*5
+	case match.LastStand:
+		xp = 10 + r.Score/2
+	case match.Blitz:
+		xp = 10 + r.Boards*15 + r.Score/10
 	default:
 		xp = 10 + r.BV3*r.Progress/100
 	}
@@ -367,7 +457,7 @@ func xpFor(r GameResult) int {
 	if r.Won {
 		xp *= 2
 	}
-	if r.Mode != match.Classic {
+	if !r.Mode.Solo() {
 		xp += 20
 		if r.Won {
 			xp += 30
@@ -377,7 +467,7 @@ func xpFor(r GameResult) int {
 }
 
 func sharedBoard(m match.Mode) bool {
-	return m == match.Coop || m == match.Flags || m == match.Territory
+	return m == match.Coop || m == match.Flags || m == match.Territory || m == match.LastStand
 }
 
 var achievements = []Achievement{
@@ -397,6 +487,13 @@ var achievements = []Achievement{
 	{"comeback", "Comeback Kid", "Win Mine Flags after using your bomb"},
 	{"social", "Party Animal", "Play 25 games against friends"},
 	{"level10", "Veteran", "Reach level 10"},
+	{"blitz5", "Blitz Master", "Clear 5 boards in one Blitz"},
+	{"survivor", "Survivor", "Win a Survival run"},
+	{"last_stand", "Last One Standing", "Win a Last Stand"},
+	{"gold_rank", "Golden", "Reach Gold on the ladder"},
+	{"diamond_rank", "Unbreakable", "Reach Diamond on the ladder"},
+	{"quest_all", "Taskmaster", "Finish all of a day's quests"},
+	{"coins2k", "Coin Collector", "Earn 2,000 coins"},
 }
 
 // Achievements lists every achievement.
@@ -414,7 +511,7 @@ func AchievementByID(id string) Achievement {
 
 func (p *Profile) award(r GameResult) []Achievement {
 	large := r.Board == "intermediate" || r.Board == "expert"
-	solo := r.Mode == match.Classic
+	solo := r.Mode.Solo()
 	social := 0
 	for _, rec := range p.Rivals {
 		social += rec.Wins + rec.Losses
@@ -436,6 +533,13 @@ func (p *Profile) award(r GameResult) []Achievement {
 		"comeback":      r.Mode == match.Flags && r.Won && r.UsedBomb && r.Score > 0,
 		"social":        social >= 25,
 		"level10":       p.Level() >= 10,
+		"blitz5":        r.Mode == match.Blitz && r.Boards >= 5,
+		"survivor":      r.Mode == match.Survival && r.Won,
+		"last_stand":    r.Mode == match.LastStand && r.Won && r.Score > 0,
+		"gold_rank":     p.BestTier >= 2,
+		"diamond_rank":  p.BestTier >= 4,
+		"quest_all":     p.questsDone(r.Date),
+		"coins2k":       p.CoinsEarned >= 2000,
 	}
 	var out []Achievement
 	for _, a := range achievements {

@@ -26,6 +26,8 @@ type PlayerView struct {
 	Cursor   int
 	Left     bool
 	BombUsed bool
+	Lives    int  // left in Survival
+	Out      bool // knocked out of Last Stand
 }
 
 // PingView is a tile a player is pointing at.
@@ -54,6 +56,7 @@ type View struct {
 	Winner    int
 	Won       bool
 	BV3       int
+	Boards    int // cleared in Blitz
 	Pings     []PingView
 }
 
@@ -70,6 +73,7 @@ func (m *Match) View(player int, now time.Duration) View {
 		Turn:   m.turn,
 		Winner: m.winner,
 		Won:    m.won,
+		Boards: m.boards,
 		Owners: slices.Clone(m.owners),
 	}
 	if m.board != nil {
@@ -91,7 +95,10 @@ func (m *Match) View(player int, now time.Duration) View {
 	if m.cfg.Mode == Territory && m.phase == Playing {
 		v.LimitMs = max(int((m.startAt + TerritoryTime - now).Milliseconds()), 0)
 	}
-	if m.cfg.Mode == Flags && m.phase == Playing {
+	if m.cfg.Mode == Blitz && m.phase == Playing {
+		v.LimitMs = max(int((m.deadline - now).Milliseconds()), 0)
+	}
+	if m.cfg.Mode.TurnBased() && m.phase == Playing {
 		v.TurnMs = max(int((m.turnEnds - now).Milliseconds()), 0)
 	}
 	for _, p := range m.players {
@@ -116,6 +123,8 @@ func (m *Match) playerView(p *player, now time.Duration) PlayerView {
 		Cursor:   p.cursor,
 		Left:     p.left,
 		BombUsed: p.bombUsed,
+		Lives:    p.lives,
+		Out:      p.out,
 	}
 	if now < p.stunUntil && m.phase == Playing {
 		pv.StunMs = int((p.stunUntil - now).Milliseconds())

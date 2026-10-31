@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"sort"
 	"time"
 
@@ -15,6 +16,9 @@ import (
 const (
 	panelX = 150
 	panelW = 340
+
+	// maxResultLines keeps the panel on the screen after a big game.
+	maxResultLines = 20
 )
 
 // results is the end-of-game panel. It is the moment that sells one more
@@ -50,7 +54,7 @@ func newResults(g *Game, p *play, v *match.View) *results {
 			Mode: v.Mode, Board: p.opt.BoardKey, Daily: p.opt.Daily, Date: date,
 			Won: won, Draw: draw, ElapsedMs: v.ElapsedMs, BV3: v.BV3, Clicks: you.Clicks,
 			Progress: you.Progress, Score: you.Score, Flagged: you.Flagged, UsedBomb: you.BombUsed,
-			Rivals: rivals(p.sess, v),
+			Rivals: rivals(p.sess, v), Boards: v.Boards, Roll: rand.IntN(100),
 		})
 		g.save()
 	}
@@ -59,7 +63,9 @@ func newResults(g *Game, p *play, v *match.View) *results {
 	case won:
 		g.sfx.Play(sndWin)
 		g.confetti()
-	case v.Mode == match.Classic || v.Mode == match.Coop:
+	case v.Mode == match.Blitz:
+		g.sfx.Play(sndLose)
+	case v.Mode.Solo() || v.Mode == match.Coop:
 		r.settle = 55
 		g.sfx.Play(sndBoom)
 		g.shake = 18
@@ -77,15 +83,14 @@ func newResults(g *Game, p *play, v *match.View) *results {
 }
 
 func outcome(v *match.View) (won, draw bool) {
-	switch v.Mode {
-	case match.Classic, match.Coop:
+	if v.Mode.Solo() || v.Mode == match.Coop {
 		return v.Won, false
 	}
-	return v.Winner == v.You, v.Mode == match.Territory && v.Winner < 0
+	return v.Winner == v.You, (v.Mode == match.Territory || v.Mode == match.LastStand) && v.Winner < 0
 }
 
 func rivals(sess netplay.Session, v *match.View) []string {
-	if v.Mode == match.Classic || v.Mode == match.Coop {
+	if v.Mode.Solo() || v.Mode == match.Coop {
 		return nil
 	}
 	var names []string
@@ -101,22 +106,24 @@ func rivals(sess netplay.Session, v *match.View) []string {
 func (r *results) describe(g *Game, p *play, v *match.View, won, draw bool) {
 	you := p.you()
 	switch {
+	case v.Mode == match.Blitz:
+		r.title = "TIME UP!"
 	case won && v.Mode == match.Coop:
 		r.title = "TEAM CLEAR!"
-	case won && v.Mode == match.Classic:
+	case won && v.Mode.Solo():
 		r.title = "CLEARED!"
 	case won:
 		r.title = "YOU WIN!"
 	case draw:
 		r.title = "A DRAW!"
-	case v.Mode == match.Classic || v.Mode == match.Coop:
+	case v.Mode.Solo() || v.Mode == match.Coop:
 		r.title = "BOOM!"
 	case v.Winner >= 0:
 		r.title = v.Players[v.Winner].Name + " wins"
 	default:
 		r.title = "GAME OVER"
 	}
-	if !won && you != nil && you.Progress >= 75 && v.Mode == match.Classic {
+	if !won && you != nil && you.Progress >= 75 && (v.Mode == match.Classic || v.Mode == match.Survival) {
 		r.sub = fmt.Sprintf("So close! %d%% cleared", you.Progress)
 	}
 	if r.rw.NewBest {
@@ -126,7 +133,12 @@ func (r *results) describe(g *Game, p *play, v *match.View, won, draw bool) {
 	if won && v.ElapsedMs > 0 && v.BV3 > 0 && you != nil && v.Mode == match.Classic {
 		r.lines = append(r.lines, fmt.Sprintf("3BV %d   %.2f/s   %d clicks", v.BV3, float64(v.BV3)*1000/float64(v.ElapsedMs), you.Clicks))
 	}
-	if v.Mode != match.Classic {
+	switch {
+	case v.Mode == match.Blitz:
+		r.lines = append(r.lines, fmt.Sprintf("Boards cleared: %d", v.Boards))
+	case v.Mode == match.Survival && you != nil:
+		r.lines = append(r.lines, fmt.Sprintf("Lives left: %d", you.Lives))
+	case !v.Mode.Solo():
 		r.lines = append(r.lines, standings(v)...)
 	}
 	if r.rw.DailyStreak > 0 && p.opt.Daily {
@@ -141,9 +153,51 @@ func (r *results) describe(g *Game, p *play, v *match.View, won, draw bool) {
 	for _, th := range r.rw.Themes {
 		r.lines = append(r.lines, "* New theme: "+th.Name)
 	}
+	r.lines = append(r.lines, r.economyLines(g)...)
+	r.lines = capLines(r.lines)
 	if won && p.opt.Daily {
 		r.share = fmt.Sprintf("Mine Party 95 daily %s: %s, 3BV %d, streak %d. Beat that!", p.opt.Date, formatTime(v.ElapsedMs), v.BV3, g.Profile.DailyStreak)
 	}
+}
+
+// economyLines reports coins, rank and quests. They're the last thing on the
+// panel, so that the next goal is what the player reads before clicking Again.
+func (r *results) economyLines(g *Game) []string {
+	rw := r.rw
+	if rw.RankAfter == "" {
+		return nil
+	}
+	var lines []string
+	for _, q := range rw.Quests {
+		lines = append(lines, "* Quest done: "+q.Desc)
+	}
+	if rw.QuestBonus {
+		lines = append(lines, fmt.Sprintf("* All quests done! +%d coins", profile.QuestBonusPay))
+	}
+	for _, t := range rw.Promotions {
+		lines = append(lines, fmt.Sprintf("* PROMOTED to %s! +%d coins", t.Name, t.Coins))
+	}
+	coins := fmt.Sprintf("+%d coins", rw.Coins)
+	switch rw.Lucky {
+	case 2:
+		coins += "  LUCKY x2!"
+	case 5:
+		coins += "  JACKPOT x5!"
+	}
+	lines = append(lines, coins)
+	rank := profile.RankOf(g.Profile.RP)
+	line := fmt.Sprintf("Rank %s  %+d RP", rank.Name, rw.RP)
+	if rank.Need > 0 {
+		line += fmt.Sprintf("  (%d to go)", rank.Need-rank.Into)
+	}
+	return append(lines, line)
+}
+
+func capLines(lines []string) []string {
+	if len(lines) <= maxResultLines {
+		return lines
+	}
+	return append(lines[:maxResultLines-1:maxResultLines-1], "...and more rewards!")
 }
 
 func standings(v *match.View) []string {
@@ -157,8 +211,13 @@ func standings(v *match.View) []string {
 		}
 		return v.Players[i].Score
 	}
-	sort.SliceStable(order, func(a, b int) bool { return score(order[a]) > score(order[b]) })
-	unit := map[match.Mode]string{match.Race: "%", match.Flags: " mines", match.Coop: " tiles", match.Territory: " tiles"}[v.Mode]
+	sort.SliceStable(order, func(a, b int) bool {
+		if v.Mode == match.LastStand && (order[a] == v.Winner || order[b] == v.Winner) {
+			return order[a] == v.Winner && order[b] != v.Winner
+		}
+		return score(order[a]) > score(order[b])
+	})
+	unit := map[match.Mode]string{match.Race: "%", match.Flags: " mines", match.Coop: " tiles", match.Territory: " tiles", match.LastStand: " tiles"}[v.Mode]
 	var out []string
 	for rank, i := range order {
 		out = append(out, fmt.Sprintf("%d. %s  %d%s", rank+1, v.Players[i].Name, score(i), unit))

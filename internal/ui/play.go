@@ -83,7 +83,7 @@ func (p *play) online() bool {
 	return p.opt.Lobby != nil && (p.opt.Host == nil || !p.opt.Host.Offline())
 }
 
-func (p *play) multi() bool { return p.v != nil && p.v.Mode != match.Classic }
+func (p *play) multi() bool { return p.v != nil && !p.v.Mode.Solo() }
 
 func (p *play) you() *match.PlayerView {
 	if p.v == nil || p.v.You < 0 || p.v.You >= len(p.v.Players) {
@@ -149,9 +149,14 @@ func (p *play) sync(g *Game, v *match.View) {
 			g.sfx.Play(sndGo)
 		}
 		p.animate(g, old, v)
-		if v.Mode == match.Flags && v.Phase == match.Playing && old.Turn != v.Turn && v.Turn == v.You {
+		if v.Mode.TurnBased() && v.Phase == match.Playing && old.Turn != v.Turn && v.Turn == v.You {
 			g.sfx.Play(sndTurn)
 		}
+		if v.Boards > old.Boards {
+			g.sfx.Play(sndAward)
+			g.burst(ScreenW/2, ScreenH/2, 60, 4, g.theme.Accent, rgb(255, 225, 0))
+		}
+		p.hurt(g, old, v)
 	}
 	if you := p.you(); you != nil {
 		stunned := you.StunMs > 0
@@ -164,6 +169,21 @@ func (p *play) sync(g *Game, v *match.View) {
 	}
 	if v.Phase == match.Over && p.res == nil {
 		p.res = newResults(g, p, v)
+	}
+}
+
+// hurt plays the feedback for losses that don't stun: a Survival life, or
+// being knocked out of Last Stand.
+func (p *play) hurt(g *Game, old, v *match.View) {
+	you := p.you()
+	if you == nil || v.You >= len(old.Players) {
+		return
+	}
+	was := old.Players[v.You]
+	if you.Lives < was.Lives || you.Out && !was.Out {
+		g.sfx.Play(sndBoom)
+		g.shake = 14
+		p.explode(g, p.lastTile, 50)
 	}
 }
 
@@ -219,7 +239,7 @@ func (p *play) layout(v *match.View) {
 		p.ts = 16
 	}
 	top := boardTop
-	if v.Mode == match.Classic {
+	if v.Mode.Solo() {
 		top = 64
 	}
 	p.bx = (ScreenW - v.W*p.ts) / 2
@@ -268,7 +288,7 @@ func (p *play) play(g *Game, in *Input) {
 			p.sess.Send(match.Action{Kind: match.Cursor, Tile: tile})
 		}
 	}
-	if you.StunMs > 0 {
+	if you.StunMs > 0 || you.Out {
 		p.press = -1
 		return
 	}
@@ -344,9 +364,9 @@ func (p *play) face() int {
 	v := p.v
 	you := p.you()
 	switch {
-	case v.Phase == match.Over && (v.Won && (v.Mode == match.Classic || v.Mode == match.Coop) || v.Winner == v.You):
+	case v.Phase == match.Over && (v.Won && (v.Mode.Solo() || v.Mode == match.Coop) || v.Winner == v.You):
 		return faceCool
-	case v.Phase == match.Over, you != nil && you.StunMs > 0:
+	case v.Phase == match.Over, you != nil && (you.StunMs > 0 || you.Out):
 		return faceDead
 	case p.press >= 0:
 		return faceScared
@@ -367,12 +387,18 @@ func (p *play) drawHeader(g *Game, s *ebiten.Image) {
 	g.led(s, 18, 30, left, 3)
 	seconds := v.ElapsedMs / 1000
 	switch {
-	case v.Mode == match.Flags && v.Phase == match.Playing:
+	case v.Mode.TurnBased() && v.Phase == match.Playing:
 		seconds = (v.TurnMs + 999) / 1000
-	case v.Mode == match.Territory && v.Phase == match.Playing:
+	case (v.Mode == match.Territory || v.Mode == match.Blitz) && v.Phase == match.Playing:
 		seconds = (v.LimitMs + 999) / 1000
 	}
 	g.led(s, ScreenW-61, 30, seconds, 3)
+	switch you := p.you(); {
+	case v.Mode == match.Blitz:
+		g.text(s, fmt.Sprintf("Boards: %d", v.Boards), 70, 37, g.theme.Accent)
+	case v.Mode == match.Survival && you != nil:
+		g.text(s, fmt.Sprintf("Lives: %d", you.Lives), 70, 37, g.theme.Accent)
+	}
 	p.smiley.draw(g, s, &g.in)
 	g.blit(s, g.art.Face[p.face()], p.smiley.X+3, p.smiley.Y+3, 1)
 	p.quit.draw(g, s, &g.in)
@@ -392,7 +418,7 @@ func (p *play) drawCards(g *Game, s *ebiten.Image) {
 	for i, pl := range v.Players {
 		cx := x + i*w
 		fill := t.Face
-		if v.Mode == match.Flags && v.Phase == match.Playing && v.Turn == i {
+		if v.Mode.TurnBased() && v.Phase == match.Playing && v.Turn == i {
 			fill = t.Hi
 		}
 		g.sunken(s, cx, 62, w-4, 26, fill)
@@ -414,6 +440,8 @@ func (p *play) drawCards(g *Game, s *ebiten.Image) {
 			g.text(s, wins, cx+w-8-textWidth(wins, 1), 63, t.Text)
 		}
 		switch {
+		case pl.Out:
+			g.text(s, fmt.Sprintf("OUT  %d tiles", pl.Score), cx+12, 74, t.Accent)
 		case pl.StunMs > 0:
 			g.text(s, fmt.Sprintf("STUNNED %.1f", float64(pl.StunMs)/1000), cx+12, 74, t.Accent)
 		case v.Mode == match.Race:
@@ -520,11 +548,18 @@ func (p *play) drawOverlays(g *Game, s *ebiten.Image) {
 	case v.Phase == match.Countdown:
 		banner(fmt.Sprint(v.Countdown/1000+1), 6, rgb(255, 255, 255))
 	case v.Phase == match.Playing:
-		if you := p.you(); you != nil && you.StunMs > 0 {
+		you := p.you()
+		switch {
+		case you != nil && you.Out:
+			banner("YOU'RE OUT", 2, rgb(255, 80, 60))
+		case you != nil && you.StunMs > 0:
 			banner(fmt.Sprintf("STUNNED %.1f", float64(you.StunMs)/1000), 3, rgb(255, 80, 60))
 		}
-		if v.Mode == match.Flags && v.Turn == v.You {
+		switch {
+		case v.Mode == match.Flags && v.Turn == v.You:
 			g.text(s, "Your turn: find a mine!", 345, 37, t.Accent)
+		case v.Mode == match.LastStand && v.Turn == v.You:
+			g.text(s, "Your turn: open a safe tile!", 345, 37, t.Accent)
 		}
 	}
 }

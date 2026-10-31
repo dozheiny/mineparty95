@@ -6,8 +6,9 @@ the match, and everything else lives on your own machine.
 
 ## Run it
 
-Download the build for your system from `dist/`, or build them all with
-`scripts/build.sh`.
+Download the build for your system from the
+[releases page](https://github.com/dozheiny/mineparty95/releases), or build them
+all into `dist/` with `make dist`.
 
 - **Windows:** run `mineparty-windows-amd64.exe`. The build is unsigned, so
   SmartScreen may warn you: choose *More info*, then *Run anyway*. Windows
@@ -29,13 +30,32 @@ X11 and OpenGL development headers).
 |---|---|---|
 | Solo | 1 | Beginner, Intermediate or Expert, with no-guess boards by default. |
 | Daily Challenge | 1 | The same board for everyone each day. Keep your streak alive and share your time. |
+| Blitz | 1 | Clear as many boards as you can before the clock runs out. Each clear buys a little less time; a mine costs 15 seconds. |
+| Survival | 1 | One Expert board and three lives. |
 | Race | 2-4 | Everyone gets the same board. First to clear wins; a mine stuns you for 5 seconds. |
 | Mine Flags | 2 | Turn-based duel on one board. Finding a mine scores and keeps your turn. If you're behind, you get one 5x5 bomb. |
 | Co-op | 2-4 | One board, live cursors. One mine ends the run for the team. |
 | Territory | 2-4 | A huge shared board, in real time. Tiles you open are yours; mines stun you and cost tiles. |
+| Last Stand | 2-4 | Take turns opening tiles on one board. Hit a mine or run out your 10 seconds and you're out. |
 
 Every multiplayer mode can also be played against CPU opponents under
 *Practice vs CPU*, or used to fill empty seats in a room.
+
+## Progress
+
+Every game earns XP and coins, win or lose, and a lucky game pays double or
+five times as much.
+
+- **Levels** pay coins and unlock themes.
+- **The ladder** runs from Bronze to Master. Wins climb it, and losses slip back,
+  but never below the tier you've reached. Reaching a tier pays a big bonus.
+- **Quests** change every day, with a bonus for finishing all three.
+- **The login bonus** builds over seven days. Missing a day starts it again.
+- **The shop** sells themes, flag, mine and smiley skins, titles and streak
+  freezes. A streak freeze covers one missed daily. Everything else is
+  cosmetic, so nothing you buy helps you in a match.
+
+Coins can only be earned; there is nothing to pay for.
 
 ## Controls
 
@@ -80,7 +100,8 @@ Things worth knowing:
 
 Progress is stored in `mineparty/profile.json` under your user config folder
 (`~/.config` on Linux, `%AppData%` on Windows, `~/Library/Application Support`
-on macOS). It holds your XP, records, rival scores and unlocks.
+on macOS). It holds your XP, coins, rank, quests, records, rival scores and
+unlocks.
 
 ## Code layout
 
@@ -93,4 +114,16 @@ on macOS). It holds your XP, records, rival scores and unlocks.
 | `internal/ui` | Screens, generated art and sound |
 | `cmd/mineparty` | The executable |
 
-Run the tests with `go test -race ./internal/...`.
+Run `make` to list the build, test and lint commands.
+
+## Releases
+
+Pushing a version tag builds every platform and publishes a GitHub release:
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+A tag with a suffix, like `v1.0.0-rc1`, is published as a prerelease. The version
+shows on the About page and from `mineparty -version`.

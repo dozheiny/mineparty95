@@ -3,6 +3,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -18,7 +19,12 @@ func main() {
 	silent := flag.Bool("silent", false, "run without sound")
 	script := flag.String("script", "", "drive the game from a UI test script")
 	lan := flag.Bool("lan", false, "host for the local network only, without asking the router to open a port")
+	version := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+	if *version {
+		fmt.Println("Mine Party 95", ui.Version)
+		return
+	}
 
 	game, err := ui.New(ui.Options{ProfilePath: *profile, Silent: *silent, ScriptPath: *script, NoRouter: *lan})
 	if err != nil {

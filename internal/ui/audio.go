@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"encoding/binary"
 	"math"
 	"math/rand/v2"
@@ -34,6 +35,8 @@ type Audio struct {
 	sounds map[string][]byte
 	opens  [6][]byte
 	volume float64
+	music  *audio.Player
+	wanted bool // whether the player wants music on
 }
 
 func newAudio(enabled bool) *Audio {
@@ -58,10 +61,35 @@ func newAudio(enabled bool) *Audio {
 	for i := range a.opens {
 		a.opens[i] = pcm(square(420*math.Pow(1.19, float64(i)), .03, .22))
 	}
+	song := pcm(composeMusic())
+	if p, err := a.ctx.NewPlayer(audio.NewInfiniteLoop(bytes.NewReader(song), int64(len(song)))); err == nil {
+		a.music = p
+	}
 	return a
 }
 
-func (a *Audio) setVolume(level int) { a.volume = float64(level) / 10 }
+func (a *Audio) setVolume(level int) {
+	a.volume = float64(level) / 10
+	a.applyMusic()
+}
+
+// setMusic turns the background music on or off.
+func (a *Audio) setMusic(on bool) {
+	a.wanted = on
+	a.applyMusic()
+}
+
+func (a *Audio) applyMusic() {
+	if a.music == nil {
+		return
+	}
+	a.music.SetVolume(a.volume * musicGain)
+	if a.wanted && a.volume > 0 {
+		a.music.Play()
+	} else {
+		a.music.Pause()
+	}
+}
 
 func (a *Audio) play(data []byte) {
 	if a.ctx == nil || data == nil || a.volume == 0 {

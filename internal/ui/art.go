@@ -85,6 +85,113 @@ var crossBitmap = []string{
 	"X..........X",
 }
 
+// Skins sold in the shop, by item ID.
+var flagSkins = map[string][]string{
+	"flag_classic": flagBitmap,
+	"flag_star": {
+		".....RR.....",
+		".....RR.....",
+		"....RRRR....",
+		"RRRRRRRRRRRR",
+		".RRRRRRRRRR.",
+		"...RRRRRR...",
+		"...RRRRRR...",
+		"..RRR..RRR..",
+		"..RR....RR..",
+		"............",
+	},
+	"flag_heart": {
+		"..RRR..RRR..",
+		".RRRRRRRRRR.",
+		".RRRRRRRRRR.",
+		".RRRRRRRRRR.",
+		"..RRRRRRRR..",
+		"...RRRRRR...",
+		"....RRRR....",
+		".....RR.....",
+		"............",
+		"............",
+	},
+	"flag_pirate": {
+		".KKKKKKKKK.K",
+		".KKRKKRKKK.K",
+		".KKKKKKKKK.K",
+		".KKKRRKKKK.K",
+		".KKRKKRKKK.K",
+		".KKKKKKKKK.K",
+		"...........K",
+		"...........K",
+		".........KKK",
+		"........KKKK",
+	},
+	"flag_crown": {
+		"............",
+		"R....RR....R",
+		"RR...RR...RR",
+		"RR..RRRR..RR",
+		"RRR.RRRR.RRR",
+		"RRRRRRRRRRRR",
+		"RRRRRRRRRRRR",
+		"RRRRRRRRRRRR",
+		"KKKKKKKKKKKK",
+		"............",
+	},
+}
+
+var mineSkins = map[string][]string{
+	"mine_classic": mineBitmap,
+	"mine_skull": {
+		"...KKKKKK...",
+		"..KKKKKKKK..",
+		".KKKKKKKKKK.",
+		".KWWKKKKWWK.",
+		".KWWKKKKWWK.",
+		".KKKKKKKKKK.",
+		"..KKKWWKKK..",
+		"...KKKKKK...",
+		"...KWKKWK...",
+		"...KKKKKK...",
+		"...KWKKWK...",
+		"............",
+	},
+	"mine_bug": {
+		"K..........K",
+		".K..KKKK..K.",
+		"..KKKKKKKK..",
+		"K.KWKKKKWK.K",
+		".KKKKKKKKKK.",
+		"..KKKKKKKK..",
+		"K.KKKKKKKK.K",
+		".KKKKKKKKKK.",
+		"..KKKKKKKK..",
+		"K.KKKKKKKK.K",
+		".K..KKKK..K.",
+		"K..........K",
+	},
+	"mine_ghost": {
+		"....KKKK....",
+		"..KKKKKKKK..",
+		".KKKKKKKKKK.",
+		".KWWKKKWWKK.",
+		".KWWKKKWWKK.",
+		"KKKKKKKKKKKK",
+		"KKKKKKKKKKKK",
+		"KKKKKKKKKKKK",
+		"KKKKKKKKKKKK",
+		"KKKKKKKKKKKK",
+		"KK.KKK.KKK.K",
+		"K...K...K..K",
+	},
+}
+
+var faceColors = map[string]color.RGBA{
+	"face_yellow": rgb(255, 225, 0),
+	"face_mint":   rgb(110, 235, 170),
+	"face_rose":   rgb(255, 140, 170),
+	"face_sky":    rgb(120, 200, 255),
+	"face_gold":   rgb(240, 180, 30),
+}
+
 func stamp(img *image.RGBA, x, y int, rows []string, ink map[byte]color.RGBA) {
 	for dy, row := range rows {
 		for dx := 0; dx < len(row); dx++ {
@@ -127,7 +234,15 @@ func glyph(rows []string, x, y int, ink map[byte]color.RGBA) *ebiten.Image {
 	return ebiten.NewImageFromImage(img)
 }
 
-func newArt(t *Theme) *Art {
+func flagInk(t *Theme, c color.RGBA) map[byte]color.RGBA {
+	return map[byte]color.RGBA{'R': c, 'K': t.Dark}
+}
+
+func mineInk(t *Theme) map[byte]color.RGBA {
+	return map[byte]color.RGBA{'K': t.Mine, 'W': t.Hi}
+}
+
+func newArt(t *Theme, flag, mine, face string) *Art {
 	a := &Art{
 		Hidden: ebiten.NewImageFromImage(bevelTile(t)),
 		Open:   ebiten.NewImageFromImage(openTile(t, t.Open)),
@@ -136,17 +251,14 @@ func newArt(t *Theme) *Art {
 	for n := 1; n <= 8; n++ {
 		a.Num[n] = glyph(digitBitmaps[n], 4, 4, map[byte]color.RGBA{'#': t.Num[n]})
 	}
-	flagInk := func(c color.RGBA) map[byte]color.RGBA {
-		return map[byte]color.RGBA{'R': c, 'K': t.Dark}
-	}
-	a.Flag = glyph(flagBitmap, 2, 3, flagInk(t.Flag))
+	a.Flag = glyph(flagSkins[flag], 2, 3, flagInk(t, t.Flag))
 	for i, c := range playerColors {
-		a.PlayerFlag[i] = glyph(flagBitmap, 2, 3, flagInk(c))
+		a.PlayerFlag[i] = glyph(flagBitmap, 2, 3, flagInk(t, c))
 	}
-	a.Mine = glyph(mineBitmap, 2, 2, map[byte]color.RGBA{'K': t.Mine, 'W': t.Hi})
+	a.Mine = glyph(mineSkins[mine], 2, 2, mineInk(t))
 	a.Wrong = glyph(crossBitmap, 2, 2, map[byte]color.RGBA{'X': t.Boom})
 	for i := range a.Face {
-		a.Face[i] = ebiten.NewImageFromImage(drawFace(i))
+		a.Face[i] = ebiten.NewImageFromImage(drawFace(i, faceColors[face]))
 	}
 	for d := range a.LED {
 		a.LED[d] = ebiten.NewImageFromImage(drawLED(t, d))
@@ -157,16 +269,16 @@ func newArt(t *Theme) *Art {
 	return a
 }
 
-func drawFace(kind int) *image.RGBA {
+func drawFace(kind int, skin color.RGBA) *image.RGBA {
 	const size = 20
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
-	yellow, ink := rgb(255, 225, 0), rgb(0, 0, 0)
+	ink := rgb(0, 0, 0)
 	for y := 0; y < size; y++ {
 		for x := 0; x < size; x++ {
 			d := math.Hypot(float64(x)-9.5, float64(y)-9.5)
 			switch {
 			case d <= 8.2:
-				img.SetRGBA(x, y, yellow)
+				img.SetRGBA(x, y, skin)
 			case d <= 9.4:
 				img.SetRGBA(x, y, ink)
 			}

@@ -36,7 +36,7 @@ func (m *Match) applyTerritory(now time.Duration, index int, p *player, a Action
 		}
 	}
 	if f.Cleared() {
-		m.finishTerritory(now)
+		m.finishByScore(now)
 	}
 }
 
@@ -69,11 +69,13 @@ func (m *Match) territoryHit(now time.Duration, p *player, tile int) {
 	p.score -= loss
 }
 
-func (m *Match) finishTerritory(now time.Duration) {
+// finishByScore ends the match in favour of the highest score still in play.
+// A tie has no winner.
+func (m *Match) finishByScore(now time.Duration) {
 	best, winner := -1, -1
 	for i, p := range m.players {
 		switch {
-		case p.left:
+		case p.left, p.out:
 		case p.score > best:
 			best, winner = p.score, i
 		case p.score == best:

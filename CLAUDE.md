@@ -16,7 +16,11 @@ go vet ./... && GOOS=windows go vet ./...      # ui has platform-specific files 
 scripts/build.sh                               # wipes dist/, then cross-builds all platforms with CGO_ENABLED=0
 ```
 
-There is no golangci-lint config. A default `golangci-lint run` currently reports 37 existing errcheck/staticcheck issues, so treat it as advisory rather than a gate.
+There is no golangci-lint config. A default `golangci-lint run` reports existing errcheck/staticcheck issues, so treat it as advisory rather than a gate.
+
+`-version` prints the build's version. `internal/ui.Version` is set at link time from `VERSION`, which `make` takes from `git describe`. `scripts/build.sh` writes to `dist/`, or to `OUT` if set, so `OUT=/tmp/x make dist` tests it without replacing existing builds.
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which tests, builds every platform and publishes a GitHub release. `ci.yml` covers every push and pull request.
 
 ### Driving the real UI
 
@@ -46,10 +50,16 @@ Dependencies run one way: `engine` <- `match` <- `netplay` <- `ui`. `profile` im
 
 **The wire format** (`wire.go`) is a single `packet` struct with exactly one field set, sent as length-prefixed JSON over one long-lived flate stream per connection. Hosts accept frames up to 4 KiB and clients up to 1 MiB. `ProtocolVersion` must match on both ends, so bump it for incompatible changes to `packet`, `Room` or `View`.
 
-**Board fields vary by mode.** Classic and Race give each player their own `engine.Field` on the same board; other modes share one. Territory shares the field but keeps flags per player, which is why `Field.ChordWith` exists. Classic generates its board on the first click unless `Config.Start` or `Config.Layout` is set.
+**Board fields vary by mode.** Classic and Race give each player their own `engine.Field` on the same board; other modes share one. Territory and Last Stand share the field but keep flags per player, which is why `Field.ChordWith` exists. Classic generates its board on the first click unless `Config.Start` or `Config.Layout` is set. Blitz replaces its board mid-match, so a board's tiles can go from open back to hidden within one round.
+
+**Ask a mode what it is rather than naming it.** Use `Mode.Solo()`, `TurnBased()` and `FixedBoard()`, not comparisons with `Classic` or `Flags`. A new mode also needs an entry in `ModeNames`, and multiplayer modes need `lobbyModes` and `modeBlurbs`.
 
 **Results are recorded by the UI.** `ui/results.go` calls `Profile.Record` once per round, using `Game.lastSession` and `lastRound` to avoid counting a result twice.
 
+**`Profile.Record` is the only place a result becomes rewards.** XP, coins, rank points, quests, promotions and awards are all paid there, into one `Rewards` for the results panel. A replayed daily or a game with no personal contribution on a shared board pays only a token, so keep new rewards inside that guard or they become farmable. `profile` never reads the clock or a random source: dates and `GameResult.Roll` are passed in, which keeps it testable.
+
+**The shop sells nothing that affects a match.** Equipped skins are local to `ui` and never cross the network, so `match` stays free of the economy. Saves are plain JSON, so nothing here is tamper-proof and the ladder is personal. New `Profile` maps must also go in `fillMaps`, or saves from older versions load with them nil.
+
 **The Daily Challenge depends on deterministic generation.** Each machine builds the day's board locally from `dailySeed(date)` in `ui/menu.go`. Changing that function, or how `engine` turns a seed into a board, gives players on different builds different dailies. Seeds must stay non-zero, because `Host.begin` replaces a zero seed with a random one.
 
-**There are no asset files.** Art (`ui/art.go`) is drawn from code per theme and sound (`ui/audio.go`) is synthesised at start-up, so changing visuals means editing code. All drawing targets the 640x480 canvas.
+**There are no asset files.** Art (`ui/art.go`) is drawn from code per theme, and sound (`ui/audio.go`) and the music loop (`ui/music.go`) are synthesised at start-up, so changing either means editing code. All drawing targets the 640x480 canvas, which is full: the menu's twelve buttons and the Stats screen have no room left, so check new lines with a screenshot. Every shop item needs matching art, which `content_test.go` enforces, as a missing skin would otherwise fall back silently.

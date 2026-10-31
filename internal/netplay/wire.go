@@ -15,7 +15,7 @@ import (
 )
 
 // ProtocolVersion must match on both ends of a connection.
-const ProtocolVersion = 1
+const ProtocolVersion = 2
 
 // Frame limits. Clients only send small messages, so a host refuses anything
 // bigger than this before allocating memory for it.

@@ -14,6 +14,9 @@ import (
 	"mineparty/internal/profile"
 )
 
+// Version names this build. Releases set it at link time.
+var Version = "dev"
+
 // The virtual screen. Everything is drawn at VGA resolution and scaled up
 // with nearest-neighbour filtering to keep the pixels crisp.
 const (
@@ -85,7 +88,8 @@ func New(opts Options) (*Game, error) {
 	}
 	g.pixel.Fill(color.White)
 	g.sfx.setVolume(prof.Volume)
-	g.applyTheme(prof.Theme)
+	g.sfx.setMusic(!prof.MusicOff)
+	g.applyLook()
 	ebiten.SetFullscreen(prof.Fullscreen)
 	if opts.ScriptPath != "" {
 		if g.script, err = loadScript(opts.ScriptPath); err != nil {
@@ -96,9 +100,11 @@ func New(opts Options) (*Game, error) {
 	return g, nil
 }
 
-func (g *Game) applyTheme(id string) {
-	g.theme = themeFor(id)
-	g.art = newArt(g.theme)
+// applyLook redraws the art for the player's theme and equipped skins.
+func (g *Game) applyLook() {
+	p := g.Profile
+	g.theme = themeFor(p.Theme)
+	g.art = newArt(g.theme, p.Equipped(profile.KindFlag), p.Equipped(profile.KindMine), p.Equipped(profile.KindFace))
 }
 
 // save writes the profile, logging rather than interrupting play on failure.
@@ -170,7 +176,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 // DrawFinalScreen keeps pixels square and sharp at any window size.
 func (g *Game) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image, geoM ebiten.GeoM) {
-	screen.Fill(color.Black)
+	screen.Fill(g.theme.Desk)
 	screen.DrawImage(offscreen, &ebiten.DrawImageOptions{GeoM: geoM, Filter: ebiten.FilterNearest})
 }
 

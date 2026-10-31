@@ -19,19 +19,33 @@ const (
 	Flags
 	Coop
 	Territory
+	Blitz
+	Survival
+	LastStand
 )
 
 // ModeNames holds a display name for each Mode.
-var ModeNames = [...]string{"Classic", "Race", "Mine Flags", "Co-op", "Territory"}
+var ModeNames = [...]string{"Classic", "Race", "Mine Flags", "Co-op", "Territory", "Blitz", "Survival", "Last Stand"}
 
 func (m Mode) String() string { return ModeNames[m] }
 
+// Solo reports whether a mode is played alone.
+func (m Mode) Solo() bool { return m == Classic || m == Blitz || m == Survival }
+
+// TurnBased reports whether players move one at a time against a turn clock.
+func (m Mode) TurnBased() bool { return m == Flags || m == LastStand }
+
+// FixedBoard reports whether a mode always plays on its own board.
+func (m Mode) FixedBoard() bool {
+	return m == Flags || m == Territory || m == Blitz || m == Survival || m == LastStand
+}
+
 // PlayerLimits returns the fewest and most players a mode allows.
 func (m Mode) PlayerLimits() (lo, hi int) {
-	switch m {
-	case Classic:
+	switch {
+	case m.Solo():
 		return 1, 1
-	case Flags:
+	case m == Flags:
 		return 2, 2
 	}
 	return 2, 4
@@ -76,6 +90,13 @@ const (
 	TerritoryStun    = 4 * time.Second
 	TerritoryMinLoss = 5
 	PingTime         = 2 * time.Second
+	BlitzTime        = 2 * time.Minute
+	BlitzBonus       = 20 * time.Second
+	BlitzMinBonus    = 2 * time.Second
+	BlitzPenalty     = 15 * time.Second
+	BlitzStun        = time.Second
+	SurvivalLives    = 3
+	LastStandTurn    = 10 * time.Second
 	bombRadius       = 2
 )
 
@@ -83,6 +104,9 @@ const (
 var (
 	FlagsBoard     = engine.Config{W: 16, H: 16, Mines: 51}
 	TerritoryBoard = engine.Config{W: 38, H: 24, Mines: 150}
+	BlitzBoard     = engine.Intermediate
+	SurvivalBoard  = engine.Expert
+	LastStandBoard = engine.Config{W: 16, H: 16, Mines: 51}
 )
 
 // Config describes a match to create.
@@ -107,7 +131,7 @@ type player struct {
 	name      string
 	left      bool
 	field     *engine.Field // own field in Race and Classic, otherwise shared
-	flags     []bool        // private flags in Territory
+	flags     []bool        // private flags in Territory and Last Stand
 	score     int
 	hits      int
 	clicks    int
@@ -116,6 +140,8 @@ type player struct {
 	cursor    int
 	bombUsed  bool
 	claims    []int // owned tiles, oldest first
+	lives     int   // in Survival
+	out       bool  // knocked out of Last Stand
 }
 
 type ping struct {
@@ -140,6 +166,8 @@ type Match struct {
 	won      bool
 	turn     int
 	turnEnds time.Duration
+	deadline time.Duration // when Blitz runs out of time
+	boards   int           // boards cleared in Blitz
 }
 
 // New creates a match. It starts counting down at now, except for Classic
@@ -147,7 +175,11 @@ type Match struct {
 func New(cfg Config, now time.Duration) *Match {
 	m := &Match{cfg: cfg, boom: -1, winner: -1}
 	for _, name := range cfg.Players {
-		m.players = append(m.players, &player{name: name, cursor: -1})
+		pl := &player{name: name, cursor: -1}
+		if cfg.Mode == Survival {
+			pl.lives = SurvivalLives
+		}
+		m.players = append(m.players, pl)
 	}
 	if cfg.Layout == nil {
 		switch cfg.Mode {
@@ -160,7 +192,16 @@ func New(cfg Config, now time.Duration) *Match {
 			if m.cfg.Start == nil {
 				m.cfg.Start = territoryStarts(TerritoryBoard, len(cfg.Players))
 			}
-		case Race, Coop:
+		case Blitz:
+			m.cfg.Board = BlitzBoard
+		case Survival:
+			m.cfg.Board = SurvivalBoard
+		case LastStand:
+			m.cfg.Board = LastStandBoard
+			m.cfg.AllowGuess = true
+		}
+		switch cfg.Mode {
+		case Race, Coop, Blitz, Survival, LastStand:
 			if m.cfg.Start == nil {
 				m.cfg.Start = []int{openingTile(m.cfg.Board, cfg.Seed)}
 			}
@@ -197,6 +238,9 @@ func (m *Match) setBoard(b *engine.Board) {
 		case Classic, Race:
 			p.field = engine.NewField(b)
 		case Territory:
+			p.field = shared
+			p.flags = make([]bool, b.Size())
+		case LastStand:
 			p.field = shared
 			p.flags = make([]bool, b.Size())
 		default:
@@ -253,6 +297,12 @@ func (m *Match) Tick(now time.Duration) {
 		m.phase = Playing
 		m.ticking = true
 		m.turnEnds = now + TurnTime
+		switch m.cfg.Mode {
+		case LastStand:
+			m.turnEnds = now + LastStandTurn
+		case Blitz:
+			m.deadline = now + BlitzTime
+		}
 	}
 	if m.phase != Playing {
 		return
@@ -264,7 +314,15 @@ func (m *Match) Tick(now time.Duration) {
 		}
 	case Territory:
 		if now >= m.startAt+TerritoryTime {
-			m.finishTerritory(now)
+			m.finishByScore(now)
+		}
+	case Blitz:
+		if now >= m.deadline {
+			m.finish(now, -1, m.boards > 0)
+		}
+	case LastStand:
+		if now >= m.turnEnds {
+			m.eliminate(now, m.turn)
 		}
 	}
 }
@@ -276,7 +334,7 @@ func (m *Match) Apply(now time.Duration, a Action) {
 		return
 	}
 	p := m.players[a.Player]
-	if p.left || m.phase != Playing {
+	if p.left || p.out || m.phase != Playing {
 		return
 	}
 	if a.Kind != Cursor && (a.Tile < 0 || (m.board != nil && a.Tile >= m.board.Size())) {
@@ -311,6 +369,12 @@ func (m *Match) Apply(now time.Duration, a Action) {
 		m.applyFlags(now, a.Player, a)
 	case Territory:
 		m.applyTerritory(now, a.Player, p, a)
+	case Blitz:
+		m.applyBlitz(now, p, a)
+	case Survival:
+		m.applySurvival(now, p, a)
+	case LastStand:
+		m.applyLastStand(now, a.Player, p, a)
 	}
 }
 
@@ -330,6 +394,10 @@ func (m *Match) Leave(now time.Duration, player int) {
 	if m.phase == Over {
 		return
 	}
+	if m.cfg.Mode == LastStand {
+		m.eliminate(now, player)
+		return
+	}
 	present := -1
 	count := 0
 	for i, p := range m.players {
@@ -341,7 +409,7 @@ func (m *Match) Leave(now time.Duration, player int) {
 	switch {
 	case count == 0:
 		m.finish(now, -1, false)
-	case count == 1 && m.cfg.Mode != Coop && m.cfg.Mode != Classic:
+	case count == 1 && m.cfg.Mode != Coop && !m.cfg.Mode.Solo():
 		m.finish(now, present, true)
 	case m.cfg.Mode == Flags && m.turn == player:
 		m.passTurn(now)

@@ -23,10 +23,13 @@ func (b *Bot) SetPlayer(player int) { b.player = player }
 
 // Next picks the bot's move. It reports false if the bot should wait.
 func (b *Bot) Next(v View) (Action, bool) {
-	if v.Phase != Playing || b.player >= len(v.Players) || v.Players[b.player].StunMs > 0 {
+	if v.Phase != Playing || b.player >= len(v.Players) {
 		return Action{}, false
 	}
-	if v.Mode == Flags && v.Turn != b.player {
+	if you := v.Players[b.player]; you.StunMs > 0 || you.Out {
+		return Action{}, false
+	}
+	if v.Mode.TurnBased() && v.Turn != b.player {
 		return Action{}, false
 	}
 	visible := make([]int8, len(v.Tiles))

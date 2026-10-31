@@ -10,13 +10,18 @@ import (
 	"mineparty/internal/netplay"
 )
 
-const blurbWidth = 41
+const (
+	blurbWidth    = 41
+	blurbTop      = 120
+	difficultyTop = 184
+)
 
 var modeBlurbs = map[match.Mode]string{
 	match.Race:      "Everyone gets the same board. First to clear it wins. Hit a mine and you're stunned for 5 seconds while your rivals pull ahead.",
 	match.Flags:     "A 2-player duel. Take turns hunting MINES: find one to score and go again. Safe tile? Turn over. If behind, use your bomb once!",
 	match.Coop:      "One board, live cursors, one timer. A single mine ends the run for the whole team, so talk it out. Press P to ping a tile.",
 	match.Territory: "Everyone plays one huge board at the same time. Tiles you open are yours; mines stun you and cost tiles. Most land in 3 minutes wins.",
+	match.LastStand: "Take turns opening tiles on one board, with 10 seconds a turn. Hit a mine or run out of time and you're out. Last one in wins.",
 }
 
 var botSpeeds = []struct {
@@ -24,7 +29,7 @@ var botSpeeds = []struct {
 	delay time.Duration
 }{{"Relaxed", 900 * time.Millisecond}, {"Normal", 500 * time.Millisecond}, {"Fast", 250 * time.Millisecond}, {"Brutal", 120 * time.Millisecond}}
 
-var lobbyModes = []match.Mode{match.Race, match.Flags, match.Coop, match.Territory}
+var lobbyModes = []match.Mode{match.Race, match.Flags, match.Coop, match.Territory, match.LastStand}
 
 type lobby struct {
 	sess    netplay.Session
@@ -64,7 +69,7 @@ func newLobby(g *Game, sess netplay.Session, h *netplay.Host) *lobby {
 	}
 	l.offline = h.Offline()
 	for i, mode := range lobbyModes {
-		b := &Button{X: 326 + i%2*144, Y: 56 + i/2*30, W: 140, H: 26, Label: mode.String()}
+		b := &Button{X: 326 + i%3*96, Y: 56 + i/3*30, W: 92, H: 26, Label: mode.String()}
 		b.On = func() {
 			l.mode = mode
 			l.configure()
@@ -72,7 +77,7 @@ func newLobby(g *Game, sess netplay.Session, h *netplay.Host) *lobby {
 		l.modeBtns = append(l.modeBtns, b)
 	}
 	for i, c := range classicBoards {
-		b := &Button{X: 326 + i*96, Y: 172, W: 92, H: 24, Label: c.name[:min(len(c.name), 12)]}
+		b := &Button{X: 326 + i*96, Y: difficultyTop, W: 92, H: 24, Label: c.name[:min(len(c.name), 12)]}
 		b.On = func() {
 			l.diff = i
 			l.configure()
@@ -157,7 +162,7 @@ func (l *lobby) Update(g *Game, in *Input) {
 		for i, b := range l.modeBtns {
 			b.Selected = lobbyModes[i] == l.mode
 		}
-		fixedBoard := l.mode == match.Flags || l.mode == match.Territory
+		fixedBoard := l.mode.FixedBoard()
 		for i, b := range l.diffBtns {
 			b.Selected = i == l.diff && !fixedBoard
 			b.Disabled = fixedBoard
@@ -225,7 +230,7 @@ func (l *lobby) Draw(g *Game, s *ebiten.Image) {
 	}
 	if l.host != nil {
 		g.text(s, "Game mode", 326, 36, t.Text)
-		y := 120
+		y := blurbTop
 		for _, line := range wrap(modeBlurbs[l.mode], blurbWidth) {
 			g.text(s, line, 326, y, t.Text)
 			y += 15

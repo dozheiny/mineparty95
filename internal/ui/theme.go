@@ -61,6 +61,38 @@ var themes = map[string]*Theme{
 		Flag: rgb(225, 0, 120), Mine: rgb(55, 20, 105), Boom: rgb(255, 113, 206),
 		LEDBack: rgb(55, 20, 105), LEDOn: rgb(255, 251, 150), LEDOff: rgb(90, 50, 130), Accent: rgb(185, 103, 255),
 	},
+	"midnight": {
+		Desk: rgb(12, 16, 40), Face: rgb(38, 46, 84), Hi: rgb(90, 104, 170), Lo: rgb(20, 24, 54), Dark: rgb(4, 6, 20),
+		Title: rgb(70, 100, 230), TitleText: rgb(255, 255, 255), Text: rgb(220, 228, 255),
+		Open: rgb(26, 32, 66), Grid: rgb(56, 66, 118),
+		Num:  [9]color.RGBA{{}, rgb(120, 170, 255), rgb(110, 225, 170), rgb(255, 120, 130), rgb(190, 160, 255), rgb(255, 180, 90), rgb(110, 220, 230), rgb(240, 240, 255), rgb(160, 170, 200)},
+		Flag: rgb(255, 90, 110), Mine: rgb(230, 235, 255), Boom: rgb(170, 40, 70),
+		LEDBack: rgb(4, 6, 20), LEDOn: rgb(120, 170, 255), LEDOff: rgb(20, 34, 70), Accent: rgb(140, 180, 255),
+	},
+	"sakura": {
+		Desk: rgb(250, 214, 226), Face: rgb(255, 236, 242), Hi: rgb(255, 255, 255), Lo: rgb(214, 150, 172), Dark: rgb(120, 50, 80),
+		Title: rgb(214, 84, 130), TitleText: rgb(255, 255, 255), Text: rgb(90, 30, 56),
+		Open: rgb(255, 244, 247), Grid: rgb(230, 190, 205),
+		Num:  [9]color.RGBA{{}, rgb(40, 90, 200), rgb(30, 130, 90), rgb(214, 30, 90), rgb(110, 40, 160), rgb(160, 60, 20), rgb(0, 120, 130), rgb(70, 20, 50), rgb(130, 90, 110)},
+		Flag: rgb(200, 30, 90), Mine: rgb(90, 30, 56), Boom: rgb(255, 150, 180),
+		LEDBack: rgb(90, 30, 56), LEDOn: rgb(255, 180, 205), LEDOff: rgb(120, 60, 85), Accent: rgb(200, 50, 110),
+	},
+	"glacier": {
+		Desk: rgb(190, 225, 240), Face: rgb(225, 242, 250), Hi: rgb(255, 255, 255), Lo: rgb(130, 175, 200), Dark: rgb(30, 70, 100),
+		Title: rgb(30, 110, 160), TitleText: rgb(255, 255, 255), Text: rgb(15, 50, 75),
+		Open: rgb(238, 248, 252), Grid: rgb(170, 205, 222),
+		Num:  [9]color.RGBA{{}, rgb(0, 80, 200), rgb(0, 120, 110), rgb(200, 30, 70), rgb(60, 40, 170), rgb(150, 70, 20), rgb(0, 120, 160), rgb(15, 40, 60), rgb(90, 120, 140)},
+		Flag: rgb(0, 100, 180), Mine: rgb(15, 50, 75), Boom: rgb(120, 200, 240),
+		LEDBack: rgb(15, 50, 75), LEDOn: rgb(130, 225, 255), LEDOff: rgb(30, 75, 105), Accent: rgb(0, 105, 170),
+	},
+	"phosphor": {
+		Desk: rgb(0, 12, 4), Face: rgb(6, 36, 16), Hi: rgb(30, 130, 60), Lo: rgb(2, 20, 8), Dark: rgb(0, 0, 0),
+		Title: rgb(50, 255, 120), TitleText: rgb(0, 24, 8), Text: rgb(70, 255, 130),
+		Open: rgb(3, 24, 10), Grid: rgb(14, 70, 34),
+		Num:  [9]color.RGBA{{}, rgb(120, 255, 160), rgb(70, 255, 130), rgb(200, 255, 120), rgb(160, 255, 200), rgb(230, 255, 150), rgb(90, 230, 150), rgb(220, 255, 230), rgb(60, 170, 100)},
+		Flag: rgb(190, 255, 190), Mine: rgb(70, 255, 130), Boom: rgb(0, 120, 50),
+		LEDBack: rgb(0, 0, 0), LEDOn: rgb(70, 255, 130), LEDOff: rgb(4, 44, 20), Accent: rgb(50, 255, 120), Scanlines: true,
+	},
 }
 
 func themeFor(id string) *Theme {

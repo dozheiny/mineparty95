@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"image/color"
 	"sort"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -35,12 +34,12 @@ func (st *stats) Draw(g *Game, s *ebiten.Image) {
 	line(fmt.Sprintf("Level %d %s, %d XP", level, profile.Title(level), p.XP))
 	y += 6
 	line("Games and wins")
-	for _, mode := range []match.Mode{match.Classic, match.Race, match.Flags, match.Coop, match.Territory} {
+	for _, mode := range []match.Mode{match.Classic, match.Blitz, match.Survival, match.Race, match.Flags, match.Coop, match.Territory, match.LastStand} {
 		line(fmt.Sprintf("  %-11s %4d played  %4d won", mode.String(), p.Played[mode.String()], p.Wins[mode.String()]))
 	}
 	y += 6
 	line("Best times")
-	for _, key := range []string{"beginner", "intermediate", "expert", "daily"} {
+	for _, key := range []string{"beginner", "intermediate", "expert", "daily", "survival"} {
 		best := "--"
 		if ms, ok := p.Best[key]; ok {
 			best = formatTime(ms)
@@ -48,6 +47,7 @@ func (st *stats) Draw(g *Game, s *ebiten.Image) {
 		line(fmt.Sprintf("  %-13s %s", key, best))
 	}
 	y += 6
+	line(fmt.Sprintf("Most Blitz boards: %d", p.BestBoards))
 	line(fmt.Sprintf("Best daily streak: %d", p.BestDaily))
 	line(fmt.Sprintf("Best win streak:   %d", p.BestWinStreak))
 	y += 6
@@ -60,7 +60,7 @@ func (st *stats) Draw(g *Game, s *ebiten.Image) {
 	if len(names) == 0 {
 		line("  Beat a friend to start a rivalry!")
 	}
-	for _, name := range names[:min(len(names), 5)] {
+	for _, name := range names[:min(len(names), 2)] {
 		rec := p.Rivals[name]
 		line(fmt.Sprintf("  %-14s %d-%d", name, rec.Wins, rec.Losses))
 	}
@@ -70,19 +70,19 @@ func (st *stats) Draw(g *Game, s *ebiten.Image) {
 	in := &g.in
 	desc := ""
 	for i, a := range profile.Achievements() {
-		ay := 54 + i*21
+		ay := 54 + i*16
 		_, have := p.Achievements[a.ID]
 		if have {
-			g.fill(s, ax, ay+2, 12, 12, t.Accent)
+			g.fill(s, ax, ay+2, 11, 11, t.Accent)
 		} else {
-			g.sunken(s, ax, ay+2, 12, 12, t.Open)
+			g.sunken(s, ax, ay+2, 11, 11, t.Open)
 		}
 		c := t.Lo
 		if have {
 			c = t.Text
 		}
 		g.text(s, a.Name, ax+18, ay+1, c)
-		if in.X >= ax && in.X < ScreenW-16 && in.Y >= ay && in.Y < ay+21 {
+		if in.X >= ax && in.X < ScreenW-16 && in.Y >= ay && in.Y < ay+16 {
 			desc = a.Desc
 		}
 	}
@@ -93,57 +93,12 @@ func (st *stats) Draw(g *Game, s *ebiten.Image) {
 	drawButtons(g, s, &g.in, st.bs)
 }
 
-type themesScene struct {
-	bs []*Button
-}
-
-func newThemes(g *Game) *themesScene {
-	back := func() { g.goTo(newMenu(g)) }
-	sc := &themesScene{bs: []*Button{closeButton(back), {X: 24, Y: 430, W: 120, H: 30, Label: "Back", On: back}}}
-	for i, th := range profile.Themes {
-		sc.bs = append(sc.bs, &Button{
-			X: 28, Y: 50 + i*72, W: 150, H: 60, Label: th.Name,
-			Disabled: !g.Profile.ThemeUnlocked(th.ID),
-			On: func() {
-				g.Profile.Theme = th.ID
-				g.applyTheme(th.ID)
-				g.save()
-			},
-		})
-	}
-	return sc
-}
-
-func (sc *themesScene) Update(g *Game, in *Input) {
-	for i, th := range profile.Themes {
-		sc.bs[2+i].Selected = g.Profile.Theme == th.ID
-	}
-	updateButtons(g, in, sc.bs)
-}
-
-func (sc *themesScene) Draw(g *Game, s *ebiten.Image) {
-	t := g.theme
-	g.window(s, "Themes")
-	for i, th := range profile.Themes {
-		y := 50 + i*72
-		pal := themeFor(th.ID)
-		for j, c := range []color.RGBA{pal.Desk, pal.Face, pal.Open, pal.Num[1], pal.Num[3], pal.Flag, pal.LEDOn} {
-			g.fill(s, 196+j*28, y+4, 26, 26, c)
-		}
-		status := "Unlocked"
-		if !g.Profile.ThemeUnlocked(th.ID) {
-			status = "Locked: " + th.Unlocks()
-		}
-		g.text(s, status, 196, y+38, t.Text)
-	}
-	drawButtons(g, s, &g.in, sc.bs)
-}
-
 type settings struct {
 	name TextField
 	bs   []*Button
 	nog  *Button
 	full *Button
+	tune *Button
 }
 
 func newSettings(g *Game) *settings {
@@ -162,13 +117,17 @@ func newSettings(g *Game) *settings {
 		g.Profile.Fullscreen = !g.Profile.Fullscreen
 		ebiten.SetFullscreen(g.Profile.Fullscreen)
 	}}
+	sc.tune = &Button{X: 280, Y: 98, W: 120, H: 26, On: func() {
+		g.Profile.MusicOff = !g.Profile.MusicOff
+		g.sfx.setMusic(!g.Profile.MusicOff)
+	}}
 	volume := func(d int) {
 		g.Profile.Volume = max(0, min(10, g.Profile.Volume+d))
 		g.sfx.setVolume(g.Profile.Volume)
 		g.sfx.Play(sndFlag)
 	}
 	sc.bs = []*Button{
-		closeButton(back), sc.nog, sc.full,
+		closeButton(back), sc.nog, sc.full, sc.tune,
 		{X: 150, Y: 98, W: 26, H: 26, Label: "-", On: func() { volume(-1) }},
 		{X: 240, Y: 98, W: 26, H: 26, Label: "+", On: func() { volume(1) }},
 		{X: 24, Y: 430, W: 120, H: 30, Label: "Save", On: back},
@@ -184,6 +143,10 @@ func (sc *settings) Update(g *Game, in *Input) {
 	sc.full.Label = "Fullscreen: OFF"
 	if g.Profile.Fullscreen {
 		sc.full.Label = "Fullscreen: ON"
+	}
+	sc.tune.Label = "Music: ON"
+	if g.Profile.MusicOff {
+		sc.tune.Label = "Music: OFF"
 	}
 	sc.name.update(in)
 	updateButtons(g, in, sc.bs)
