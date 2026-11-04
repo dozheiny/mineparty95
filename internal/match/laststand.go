@@ -1,6 +1,10 @@
 package match
 
-import "time"
+import (
+	"time"
+
+	"mineparty/internal/engine"
+)
 
 // applyLastStand runs Last Stand: players take turns opening tiles on a shared
 // board, and a mine puts them out. Flags are private and need no turn, so that
@@ -9,7 +13,7 @@ func (m *Match) applyLastStand(now time.Duration, index int, p *player, a Action
 	f := p.field
 	if a.Kind == Flag {
 		if f.Hidden(a.Tile) {
-			p.flags[a.Tile] = !p.flags[a.Tile]
+			p.marks[a.Tile] = p.marks[a.Tile].Next()
 			p.flagged = true
 		}
 		return
@@ -21,7 +25,7 @@ func (m *Match) applyLastStand(now time.Duration, index int, p *player, a Action
 	mine := -1
 	switch a.Kind {
 	case Reveal:
-		if p.flags[a.Tile] {
+		if p.marks[a.Tile] == engine.FlagMark {
 			return
 		}
 		var hit bool
@@ -29,7 +33,7 @@ func (m *Match) applyLastStand(now time.Duration, index int, p *player, a Action
 			mine = a.Tile
 		}
 	case Chord:
-		opened, mine = f.ChordWith(a.Tile, p.flags)
+		opened, mine = f.ChordWith(a.Tile, p.marks)
 	}
 	// A move that does nothing doesn't use up the turn.
 	if len(opened) == 0 && mine < 0 {

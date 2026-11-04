@@ -25,6 +25,7 @@ type Art struct {
 	Hidden, Open, Boom *ebiten.Image
 	Num                [9]*ebiten.Image
 	Flag, Mine, Wrong  *ebiten.Image
+	Question           *ebiten.Image
 	PlayerFlag         [4]*ebiten.Image
 	Face               [faceCount]*ebiten.Image
 	LED                [11]*ebiten.Image // 0-9, then a minus sign
@@ -41,6 +42,8 @@ var digitBitmaps = [9][]string{
 	7: {"########", "......##", ".....##.", ".....##.", "....##..", "....##..", "...##...", "...##...", "...##..."},
 	8: {".######.", "##....##", "##....##", "##....##", ".######.", "##....##", "##....##", "##....##", ".######."},
 }
+
+var questionBitmap = []string{".######.", "##....##", "......##", ".....##.", "...###..", "...##...", "........", "...##...", "...##..."}
 
 var flagBitmap = []string{
 	"............",
@@ -252,6 +255,7 @@ func newArt(t *Theme, flag, mine, face string) *Art {
 		a.Num[n] = glyph(digitBitmaps[n], 4, 4, map[byte]color.RGBA{'#': t.Num[n]})
 	}
 	a.Flag = glyph(flagSkins[flag], 2, 3, flagInk(t, t.Flag))
+	a.Question = glyph(questionBitmap, 4, 4, map[byte]color.RGBA{'#': t.Dark})
 	for i, c := range playerColors {
 		a.PlayerFlag[i] = glyph(flagBitmap, 2, 3, flagInk(t, c))
 	}

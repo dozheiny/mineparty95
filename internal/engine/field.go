@@ -1,11 +1,24 @@
 package engine
 
-// Field is the play state of one board: which tiles are open or flagged.
+// Mark is what a player has put on a hidden tile.
+type Mark byte
+
+const (
+	NoMark Mark = iota
+	FlagMark
+	QuestionMark // unsure: counts as no mine, but chords and floods leave it shut
+)
+
+// Next is the mark a right click turns m into: a flag, then a question mark,
+// then nothing again.
+func (m Mark) Next() Mark { return (m + 1) % 3 }
+
+// Field is the play state of one board: which tiles are open or marked.
 // Several players can share a Field, or each can have their own.
 type Field struct {
 	B       *Board
 	open    []bool
-	flag    []bool
+	mark    []Mark
 	exposed []bool
 	left    int
 }
@@ -15,7 +28,7 @@ func NewField(b *Board) *Field {
 	return &Field{
 		B:       b,
 		open:    make([]bool, b.Size()),
-		flag:    make([]bool, b.Size()),
+		mark:    make([]Mark, b.Size()),
 		exposed: make([]bool, b.Size()),
 		left:    b.Size() - b.Mines,
 	}
@@ -25,7 +38,10 @@ func NewField(b *Board) *Field {
 func (f *Field) Open(i int) bool { return f.open[i] }
 
 // Flagged reports whether tile i carries a flag.
-func (f *Field) Flagged(i int) bool { return f.flag[i] }
+func (f *Field) Flagged(i int) bool { return f.mark[i] == FlagMark }
+
+// Mark returns the mark on tile i.
+func (f *Field) Mark(i int) Mark { return f.mark[i] }
 
 // Exposed reports whether tile i is a mine that has been uncovered.
 func (f *Field) Exposed(i int) bool { return f.exposed[i] }
@@ -39,8 +55,8 @@ func (f *Field) Left() int { return f.left }
 // Flags returns how many flags are on the board.
 func (f *Field) Flags() int {
 	n := 0
-	for _, v := range f.flag {
-		if v {
+	for _, m := range f.mark {
+		if m == FlagMark {
 			n++
 		}
 	}
@@ -50,23 +66,24 @@ func (f *Field) Flags() int {
 // Hidden reports whether tile i has neither been opened nor exposed.
 func (f *Field) Hidden(i int) bool { return !f.open[i] && !f.exposed[i] }
 
-// ToggleFlag adds or removes a flag on a hidden tile.
-func (f *Field) ToggleFlag(i int) {
+// CycleMark moves a hidden tile on to its next mark.
+func (f *Field) CycleMark(i int) {
 	if f.Hidden(i) {
-		f.flag[i] = !f.flag[i]
+		f.mark[i] = f.mark[i].Next()
 	}
 }
 
 // Expose uncovers a mine so that it stays visible and counts as flagged.
 func (f *Field) Expose(i int) {
 	f.exposed[i] = true
-	f.flag[i] = false
+	f.mark[i] = NoMark
 }
 
-// Reveal opens tile i, flooding outward from empty tiles. Flagged tiles stay
-// closed. It reports the tiles opened and whether tile i was a mine.
+// Reveal opens tile i, flooding outward from empty tiles. A flag stops it,
+// and the flood leaves marked tiles closed. It reports the tiles opened and
+// whether tile i was a mine.
 func (f *Field) Reveal(i int) (opened []int, hit bool) {
-	if !f.Hidden(i) || f.flag[i] {
+	if !f.Hidden(i) || f.mark[i] == FlagMark {
 		return nil, false
 	}
 	if f.B.Mine[i] {
@@ -88,7 +105,7 @@ func (f *Field) flood(start int, opened []int) []int {
 			continue
 		}
 		for _, n := range f.B.Neighbors(t, buf[:0]) {
-			if f.Hidden(n) && !f.flag[n] {
+			if f.Hidden(n) && f.mark[n] == NoMark {
 				f.open[n] = true
 				f.left--
 				opened = append(opened, n)
@@ -99,16 +116,17 @@ func (f *Field) flood(start int, opened []int) []int {
 	return opened
 }
 
-// Chord opens the hidden neighbours of an open number once enough of them
-// are flagged. A misplaced flag makes it hit a mine, whose tile it reports;
-// mine is -1 otherwise.
+// Chord opens the unmarked neighbours of an open number once enough of them
+// are flagged. Question marks don't count as flags and stay closed. A
+// misplaced flag makes it hit a mine, whose tile it reports; mine is -1
+// otherwise.
 func (f *Field) Chord(i int) (opened []int, mine int) {
-	return f.ChordWith(i, f.flag)
+	return f.ChordWith(i, f.mark)
 }
 
-// ChordWith is Chord for callers that track flags themselves, such as modes
-// where each player has private flags on a shared field.
-func (f *Field) ChordWith(i int, flags []bool) (opened []int, mine int) {
+// ChordWith is Chord for callers that track marks themselves, such as modes
+// where each player has private marks on a shared field.
+func (f *Field) ChordWith(i int, marks []Mark) (opened []int, mine int) {
 	mine = -1
 	if !f.open[i] || f.B.Number[i] == 0 {
 		return nil, mine
@@ -117,7 +135,7 @@ func (f *Field) ChordWith(i int, flags []bool) (opened []int, mine int) {
 	near := f.B.Neighbors(i, buf[:0])
 	marked := 0
 	for _, n := range near {
-		if flags[n] || f.exposed[n] {
+		if marks[n] == FlagMark || f.exposed[n] {
 			marked++
 		}
 	}
@@ -125,7 +143,7 @@ func (f *Field) ChordWith(i int, flags []bool) (opened []int, mine int) {
 		return nil, mine
 	}
 	for _, n := range near {
-		if !f.Hidden(n) || flags[n] {
+		if !f.Hidden(n) || marks[n] != NoMark {
 			continue
 		}
 		if f.B.Mine[n] {

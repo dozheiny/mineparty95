@@ -3,6 +3,8 @@ package match
 import (
 	"slices"
 	"time"
+
+	"mineparty/internal/engine"
 )
 
 // applyTerritory runs Territory: everyone plays one huge board at once, each
@@ -13,12 +15,12 @@ func (m *Match) applyTerritory(now time.Duration, index int, p *player, a Action
 	switch a.Kind {
 	case Flag:
 		if f.Hidden(a.Tile) {
-			p.flags[a.Tile] = !p.flags[a.Tile]
+			p.marks[a.Tile] = p.marks[a.Tile].Next()
 			p.flagged = true
 		}
 		return
 	case Reveal:
-		if p.flags[a.Tile] {
+		if p.marks[a.Tile] == engine.FlagMark {
 			return
 		}
 		p.clicks++
@@ -29,7 +31,7 @@ func (m *Match) applyTerritory(now time.Duration, index int, p *player, a Action
 		}
 	case Chord:
 		p.clicks++
-		opened, mine := f.ChordWith(a.Tile, p.flags)
+		opened, mine := f.ChordWith(a.Tile, p.marks)
 		m.claimAll(index, opened)
 		if mine >= 0 {
 			m.territoryHit(now, p, mine)

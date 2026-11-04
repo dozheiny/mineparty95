@@ -27,7 +27,8 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -H=wi
 for arch in arm64 amd64; do
     echo "darwin/$arch"
     app="$out/MineParty95-macos-$arch.app"
-    mkdir -p "$app/Contents/MacOS"
+    mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+    go run ./scripts/icns "$app/Contents/Resources/mineparty.icns"
     GOOS=darwin GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "-s -w $stamp" \
         -o "$app/Contents/MacOS/mineparty" ./cmd/mineparty
     cat > "$app/Contents/Info.plist" <<PLIST
@@ -38,6 +39,7 @@ for arch in arm64 amd64; do
     <key>CFBundleName</key><string>Mine Party 95</string>
     <key>CFBundleIdentifier</key><string>app.mineparty95</string>
     <key>CFBundleExecutable</key><string>mineparty</string>
+    <key>CFBundleIconFile</key><string>mineparty</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>$bundle_version</string>
     <key>NSHighResolutionCapable</key><true/>

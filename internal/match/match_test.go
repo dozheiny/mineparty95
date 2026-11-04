@@ -67,6 +67,20 @@ func TestClassicLosingShowsMinesAndExplodedTile(t *testing.T) {
 	}
 }
 
+func TestQuestionMarksShowUntilTheEnd(t *testing.T) {
+	m := New(Config{Mode: Classic, Layout: strip(), Players: []string{"a"}}, 0)
+	for _, tile := range []int{4, 4, 5, 5} {
+		act(m, 0, 0, Flag, tile)
+	}
+	if v := m.View(0, 0); v.Tiles[4] != TileQuestion || v.Tiles[5] != TileQuestion {
+		t.Fatalf("tiles = %v, want question marks on 4 and 5", v.Tiles)
+	}
+	act(m, 0, 0, Reveal, 1)
+	if v := m.View(0, 0); v.Tiles[4] != TileMine || v.Tiles[5] != TileQuestion {
+		t.Fatalf("tiles = %v after losing", v.Tiles)
+	}
+}
+
 func TestClassicClearingWinsAndCountsClicks(t *testing.T) {
 	m := New(Config{Mode: Classic, Layout: open5(), Players: []string{"a"}}, 0)
 	act(m, 2*sec, 0, Reveal, 24)

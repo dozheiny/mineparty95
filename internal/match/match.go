@@ -131,7 +131,7 @@ type player struct {
 	name      string
 	left      bool
 	field     *engine.Field // own field in Race and Classic, otherwise shared
-	flags     []bool        // private flags in Territory and Last Stand
+	marks     []engine.Mark // private marks in Territory and Last Stand
 	score     int
 	hits      int
 	clicks    int
@@ -239,10 +239,10 @@ func (m *Match) setBoard(b *engine.Board) {
 			p.field = engine.NewField(b)
 		case Territory:
 			p.field = shared
-			p.flags = make([]bool, b.Size())
+			p.marks = make([]engine.Mark, b.Size())
 		case LastStand:
 			p.field = shared
-			p.flags = make([]bool, b.Size())
+			p.marks = make([]engine.Mark, b.Size())
 		default:
 			p.field = shared
 		}
@@ -429,7 +429,7 @@ func (m *Match) applyCommon(now time.Duration, p *player, a Action) {
 	f := p.field
 	switch a.Kind {
 	case Flag:
-		f.ToggleFlag(a.Tile)
+		f.CycleMark(a.Tile)
 		p.flagged = true
 	case Reveal, Chord:
 		m.startClock(now)
@@ -461,7 +461,7 @@ func (m *Match) applyRace(now time.Duration, index int, p *player, a Action) {
 	f := p.field
 	switch a.Kind {
 	case Flag:
-		f.ToggleFlag(a.Tile)
+		f.CycleMark(a.Tile)
 		p.flagged = true
 	case Reveal, Chord:
 		p.clicks++

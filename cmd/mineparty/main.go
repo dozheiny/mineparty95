@@ -34,6 +34,7 @@ func main() {
 	scale := max(1, min((w-40)/ui.ScreenW, (h-100)/ui.ScreenH))
 	ebiten.SetWindowSize(ui.ScreenW*scale, ui.ScreenH*scale)
 	ebiten.SetWindowTitle("Mine Party 95")
+	ebiten.SetWindowIcon(ui.WindowIcons())
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetTPS(60)
 

@@ -8,7 +8,7 @@ func (m *Match) applyBlitz(now time.Duration, p *player, a Action) {
 	f := p.field
 	switch a.Kind {
 	case Flag:
-		f.ToggleFlag(a.Tile)
+		f.CycleMark(a.Tile)
 		p.flagged = true
 	case Reveal, Chord:
 		p.clicks++
@@ -49,7 +49,7 @@ func (m *Match) applySurvival(now time.Duration, p *player, a Action) {
 	f := p.field
 	switch a.Kind {
 	case Flag:
-		f.ToggleFlag(a.Tile)
+		f.CycleMark(a.Tile)
 		p.flagged = true
 	case Reveal, Chord:
 		p.clicks++

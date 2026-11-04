@@ -3,6 +3,8 @@ package match
 import (
 	"slices"
 	"time"
+
+	"mineparty/internal/engine"
 )
 
 // Values of a tile in a View, alongside the numbers 0 to 8.
@@ -12,6 +14,7 @@ const (
 	TileMine      byte = 11
 	TileExploded  byte = 12
 	TileWrongFlag byte = 13
+	TileQuestion  byte = 14
 )
 
 // PlayerView is what everyone may know about a player.
@@ -150,10 +153,11 @@ func (m *Match) tiles(player, size int) []byte {
 	f := p.field
 	over := m.phase == Over
 	for i := range out {
-		flagged := f.Flagged(i)
-		if p.flags != nil {
-			flagged = p.flags[i]
+		mark := f.Mark(i)
+		if p.marks != nil {
+			mark = p.marks[i]
 		}
+		flagged := mark == engine.FlagMark
 		mine := m.board.IsMine(i)
 		switch {
 		case f.Open(i):
@@ -170,6 +174,8 @@ func (m *Match) tiles(player, size int) []byte {
 			out[i] = TileFlag
 		case over && mine:
 			out[i] = TileMine
+		case mark == engine.QuestionMark:
+			out[i] = TileQuestion
 		}
 	}
 	return out

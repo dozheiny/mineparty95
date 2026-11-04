@@ -50,7 +50,7 @@ Dependencies run one way: `engine` <- `match` <- `netplay` <- `ui`. `profile` im
 
 **The wire format** (`wire.go`) is a single `packet` struct with exactly one field set, sent as length-prefixed JSON over one long-lived flate stream per connection. Hosts accept frames up to 4 KiB and clients up to 1 MiB. `ProtocolVersion` must match on both ends, so bump it for incompatible changes to `packet`, `Room` or `View`.
 
-**Board fields vary by mode.** Classic and Race give each player their own `engine.Field` on the same board; other modes share one. Territory and Last Stand share the field but keep flags per player, which is why `Field.ChordWith` exists. Classic generates its board on the first click unless `Config.Start` or `Config.Layout` is set. Blitz replaces its board mid-match, so a board's tiles can go from open back to hidden within one round.
+**Board fields vary by mode.** Classic and Race give each player their own `engine.Field` on the same board; other modes share one. Territory and Last Stand share the field but keep marks (flags and `?`) per player, which is why `Field.ChordWith` exists. A `?` never counts as a flag, and chords and floods leave it shut. Classic generates its board on the first click unless `Config.Start` or `Config.Layout` is set. Blitz replaces its board mid-match, so a board's tiles can go from open back to hidden within one round.
 
 **Ask a mode what it is rather than naming it.** Use `Mode.Solo()`, `TurnBased()` and `FixedBoard()`, not comparisons with `Classic` or `Flags`. A new mode also needs an entry in `ModeNames`, and multiplayer modes need `lobbyModes` and `modeBlurbs`.
 

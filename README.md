@@ -62,7 +62,7 @@ Coins can only be earned; there is nothing to pay for.
 | Input | Action |
 |---|---|
 | Left click | Open a tile, or chord on a number |
-| Right click, or Ctrl+click | Flag |
+| Right click, or Ctrl+click | Flag, then mark `?`, then clear. Chording leaves `?` tiles shut |
 | Space or F2 | New game or rematch |
 | P or middle click | Ping a tile in multiplayer |
 | B | Arm your bomb in Mine Flags |

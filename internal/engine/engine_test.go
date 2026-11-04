@@ -109,7 +109,7 @@ func TestRevealStopsAtNumbers(t *testing.T) {
 func TestRevealSkipsFlaggedAndOpenTiles(t *testing.T) {
 	b := NewBoard(5, 5, []int{0})
 	f := NewField(b)
-	f.ToggleFlag(1)
+	f.CycleMark(1)
 	if opened, _ := f.Reveal(1); len(opened) != 0 {
 		t.Fatalf("flagged tile opened: %v", opened)
 	}
@@ -136,7 +136,7 @@ func TestRevealMineReportsHitWithoutOpeningSafeTiles(t *testing.T) {
 func TestToggleFlagIgnoresOpenTiles(t *testing.T) {
 	f := NewField(NewBoard(3, 1, []int{1}))
 	f.Reveal(0)
-	f.ToggleFlag(0)
+	f.CycleMark(0)
 	if f.Flagged(0) {
 		t.Fatal("open tile accepted a flag")
 	}
@@ -146,7 +146,7 @@ func TestChordOpensNeighboursWhenFlagsMatch(t *testing.T) {
 	// Tile 1 sees one mine; flagging it lets a chord open everything else.
 	f := NewField(NewBoard(3, 3, []int{0}))
 	f.Reveal(1)
-	f.ToggleFlag(0)
+	f.CycleMark(0)
 	opened, mine := f.Chord(1)
 	if mine != -1 || len(opened) == 0 {
 		t.Fatalf("opened=%v mine=%d", opened, mine)
@@ -167,7 +167,7 @@ func TestChordRefusesWhenFlagCountDiffers(t *testing.T) {
 func TestChordOnWrongFlagReportsTheMineItHit(t *testing.T) {
 	f := NewField(NewBoard(3, 3, []int{0}))
 	f.Reveal(1)
-	f.ToggleFlag(2)
+	f.CycleMark(2)
 	if _, mine := f.Chord(1); mine != 0 {
 		t.Fatalf("mine = %d, want the real mine at 0", mine)
 	}
@@ -179,6 +179,55 @@ func TestChordCountsExposedMinesAsFlags(t *testing.T) {
 	f.Expose(0)
 	if opened, mine := f.Chord(1); mine != -1 || len(opened) == 0 {
 		t.Fatalf("opened=%v mine=%d", opened, mine)
+	}
+}
+
+func TestCycleMarkGoesFlagQuestionNone(t *testing.T) {
+	f := NewField(NewBoard(3, 1, []int{1}))
+	for _, want := range []Mark{FlagMark, QuestionMark, NoMark} {
+		f.CycleMark(0)
+		if got := f.Mark(0); got != want {
+			t.Fatalf("mark = %d, want %d", got, want)
+		}
+	}
+}
+
+func TestChordLeavesQuestionMarksShut(t *testing.T) {
+	// Tile 1 sees the mine at 0. Tile 2 is safe but marked unsure, and the
+	// chord's flood from tile 5 reaches it too.
+	f := NewField(NewBoard(3, 3, []int{0}))
+	f.Reveal(1)
+	f.CycleMark(0)
+	f.CycleMark(2)
+	f.CycleMark(2)
+	opened, mine := f.Chord(1)
+	if mine != -1 || len(opened) == 0 {
+		t.Fatalf("opened=%v mine=%d", opened, mine)
+	}
+	if f.Open(2) || f.Mark(2) != QuestionMark {
+		t.Fatalf("chord opened the question mark: opened %v", opened)
+	}
+}
+
+func TestChordDoesNotCountQuestionMarksAsFlags(t *testing.T) {
+	f := NewField(NewBoard(3, 3, []int{0}))
+	f.Reveal(1)
+	f.CycleMark(0)
+	f.CycleMark(0)
+	if opened, mine := f.Chord(1); mine != -1 || len(opened) != 0 {
+		t.Fatalf("chord acted on a question mark: opened=%v mine=%d", opened, mine)
+	}
+}
+
+func TestRevealOpensAQuestionMarkButFloodsAroundOne(t *testing.T) {
+	f := NewField(NewBoard(5, 5, []int{0}))
+	f.CycleMark(24)
+	f.CycleMark(24)
+	if opened, _ := f.Reveal(12); slices.Contains(opened, 24) {
+		t.Fatal("flood opened a question mark")
+	}
+	if opened, _ := f.Reveal(24); !slices.Equal(opened, []int{24}) {
+		t.Fatalf("clicking a question mark opened %v, want just it", opened)
 	}
 }
 

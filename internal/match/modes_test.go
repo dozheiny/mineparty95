@@ -233,6 +233,18 @@ func TestLastStandFlagsArePrivateAndNeedNoTurn(t *testing.T) {
 	}
 }
 
+func TestLastStandQuestionMarksArePrivate(t *testing.T) {
+	m := stand(t, strip(), "a", "b")
+	act(m, 4*sec, 1, Flag, 1)
+	act(m, 4*sec, 1, Flag, 1)
+	if m.View(1, 4*sec).Tiles[1] != TileQuestion {
+		t.Fatal("a second right click should leave a question mark")
+	}
+	if m.View(0, 4*sec).Tiles[1] != TileHidden {
+		t.Fatal("a question mark leaked to the other player")
+	}
+}
+
 func TestLastStandMineLeavesTheLastPlayerWinning(t *testing.T) {
 	m := stand(t, strip(), "a", "b")
 	act(m, 4*sec, 0, Reveal, 1)

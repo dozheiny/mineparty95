@@ -324,7 +324,7 @@ func (p *play) play(g *Game, in *Input) {
 				send(match.Bomb)
 				g.sfx.Play(sndBoom)
 				g.shake = 8
-			case v.Tiles[tile] == match.TileHidden:
+			case v.Tiles[tile] == match.TileHidden || v.Tiles[tile] == match.TileQuestion:
 				send(match.Reveal)
 			case v.Tiles[tile] <= 8:
 				send(match.Chord)
@@ -506,11 +506,14 @@ func (p *play) drawTile(g *Game, s *ebiten.Image, i int, tile byte, x, y, scale 
 			c := playerColors[(v.Owners[i]-1)%4]
 			g.fill(s, x, y, p.ts, p.ts, color.RGBA{c.R / 3, c.G / 3, c.B / 3, 85})
 		}
-	case tile == match.TileHidden:
+	case tile == match.TileHidden, tile == match.TileQuestion:
 		if i == p.press && !p.bomb {
 			g.blit(s, a.Open, x, y, scale)
 		} else {
 			g.blit(s, a.Hidden, x, y, scale)
+		}
+		if tile == match.TileQuestion {
+			g.blit(s, a.Question, x, y, scale)
 		}
 	case tile == match.TileFlag:
 		g.blit(s, a.Hidden, x, y, scale)
